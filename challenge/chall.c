@@ -1,13 +1,4 @@
-/* CTF Challenge: fmt-got
- *
- * Vulnerability : Format-string bug in a printf(buf) loop
- * Binary flags  : Partial RELRO (GOT writable), No PIE, No stack canary
- *
- * The binary leaks the runtime address of system() on startup so that
- * participants do not need a separate libc leak.  The format-string loop
- * then lets them overwrite the printf GOT entry with system(), after which
- * sending "/bin/sh" calls system("/bin/sh") and spawns a shell.
- */
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,6 +9,12 @@ void setup(void) {
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
 }
+
+void win(void) {
+    system("/bin/sh");
+}
+
+int goldenfreddy = 67; //this value is changed in the remotte binary, but the offset to win() is the same
 
 int main(void) {
     char buf[64];

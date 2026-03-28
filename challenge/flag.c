@@ -19,11 +19,9 @@ int main(void) {
         return 1;
     }
 
-    char buf[256];
-    while (fgets(buf, sizeof(buf), f)) {
-        fputs(buf, stdout);
-    }
 
-    fclose(f);
+    printf(fmt, "Not here I wonder where?",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, secret_flag);
+    putchar('\n');
+
     return 0;
 }
