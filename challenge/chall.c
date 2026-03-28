@@ -1,12 +1,12 @@
-/* CTF Challenge: fmt-got
+/* CTF Challenge: easy-fmt-got
  *
  * Vulnerability : Format-string bug in a printf(buf) loop
  * Binary flags  : Partial RELRO (GOT writable), No PIE, No stack canary
  *
- * The binary leaks the runtime address of system() on startup so that
- * participants do not need a separate libc leak.  The format-string loop
- * then lets them overwrite the printf GOT entry with system(), after which
- * sending "/bin/sh" calls system("/bin/sh") and spawns a shell.
+ * Easier path:
+ * 1. Overwrite printf@GOT with win() (fixed address because no PIE).
+ * 2. Send any line to trigger the hijacked call.
+ * 3. win() executes /bin/sh.
  */
 
 #include <stdio.h>
@@ -19,13 +19,18 @@ void setup(void) {
     setvbuf(stderr, NULL, _IONBF, 0);
 }
 
+void win(void) {
+    system("/bin/sh");
+}
+
 int main(void) {
     char buf[64];
 
     setup();
 
-    /* Leak system() address so participants don't need a libc database */
-    printf("Gift for you: %p\n", (void *)system);
+    puts("=== easy-fmt-got ===");
+    printf("hint: win() is at %p\n", (void *)win);
+    puts("Overwrite printf@GOT -> win, then send anything.");
 
     do {
         fgets(buf, sizeof(buf), stdin);

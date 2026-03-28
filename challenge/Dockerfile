@@ -1,19 +1,17 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# fmt-got  – Format String + GOT-overwrite CTF challenge
+# easy-fmt-got  – Simple Format String + GOT-overwrite CTF challenge
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Binary security profile:
 #   Partial RELRO   – GOT table is writable at runtime
-#   No PIE          – binary base address is fixed (0x400000)
-#   No stack canary – simplifies exploitation (not the focus of this challenge)
+#   No PIE          – binary base address is fixed
+#   No stack canary – simplifies exploitation focus
 #   NX enabled      – shellcode on the stack is not executable
 #
 # Exploitation path:
-#   1. Read the system() leak printed by the binary on startup.
-#   2. Use the format-string vulnerability (printf(buf)) to overwrite the
-#      printf() GOT entry with the leaked system() address.
-#   3. Send "/bin/sh" → printf("/bin/sh") now calls system("/bin/sh").
-#   4. In the resulting shell, execute ./flag to print the flag.
+#   1. Use format-string in chall to overwrite printf@GOT -> win.
+#   2. Trigger win() to spawn /bin/sh.
+#   3. Run ./flag, then submit "%s" (or "%1$s") to leak embedded flag string.
 # ─────────────────────────────────────────────────────────────────────────────
 
 FROM ubuntu:22.04
@@ -47,18 +45,12 @@ RUN gcc -o chall chall.c \
 
 # ── compile the flag-printer binary ──────────────────────────────────────────
 #
-#   Owned by root, SUID bit set → executes as root regardless of caller.
-#   This lets it open /flag.txt (mode 0400, owned by root) even when run
-#   by the unprivileged ctf user from within the spawned shell.
+#   Keep it execute-only for ctf players (no read bit).
+#   The flag is embedded in the binary as a global variable.
 #
 RUN gcc -o flag flag.c \
     && chown root:root flag \
-    && chmod 4755 flag
-
-# ── plant the flag (only root can read it directly) ──────────────────────────
-RUN echo 'CTF{f0rm4t_str1ng_g0t_wr1t3_4nd_sh3ll_3sc4p3}' > /flag.txt \
-    && chown root:root /flag.txt \
-    && chmod 400 /flag.txt
+    && chmod 111 flag
 
 # ── drop to unprivileged user ────────────────────────────────────────────────
 USER ctf

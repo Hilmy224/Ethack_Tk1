@@ -1,29 +1,32 @@
-/* flag – SUID helper that prints the flag.
+/* flag - execute-only binary with an intentionally simple format-string bug.
  *
- * This binary is compiled and installed with the SUID bit set so that it
- * runs as root regardless of who invokes it.  The flag file (/flag.txt) is
- * owned by root and mode 0400, so regular users cannot read it directly –
- * they must exploit the main challenge binary to obtain a shell and then
- * execute this program.
+ * The flag is embedded as a global variable.  The binary asks for a format
+ * string and uses it directly in printf(fmt, secret_flag), so %s can leak it.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 
-int main(void) {
-    puts("Now where were we?");
+static const char secret_flag[] = "CTF{easy_fstring_s_leak}";
 
-    FILE *f = fopen("/flag.txt", "r");
-    if (!f) {
-        perror("fopen /flag.txt");
+static void setup(void) {
+    setvbuf(stdin, NULL, _IONBF, 0);
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+}
+
+int main(void) {
+    char fmt[128];
+
+    setup();
+
+    puts("Now where we?");
+
+
+    if (!fgets(fmt, sizeof(fmt), stdin)) {
         return 1;
     }
 
-    char buf[256];
-    while (fgets(buf, sizeof(buf), f)) {
-        fputs(buf, stdout);
-    }
-
-    fclose(f);
+    printf(fmt, secret_flag); 
     return 0;
 }

