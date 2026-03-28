@@ -14,6 +14,7 @@ def conn():
 def main():
     r = conn()
 
+    r.recvline(timeout=1)  
     r.recvline(timeout=1)   
     r.recvline(timeout=1)   
 
