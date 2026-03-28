@@ -35,7 +35,7 @@ int main(void) {
 
     do {
         fgets(buf, sizeof(buf), stdin);
-        printf(buf);               /* <-- format-string vulnerability */
+        printf(buf);             
     } while (strncmp(buf, "quit", 4) != 0);
 
     return 0;
