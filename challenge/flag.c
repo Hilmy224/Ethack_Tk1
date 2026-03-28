@@ -1,32 +1,39 @@
-/* flag - execute-only binary with an intentionally simple format-string bug.
- *
- * The flag is embedded as a global variable.  The binary asks for a format
- * string and uses it directly in printf(fmt, secret_flag), so %s can leak it.
- */
-
 #include <stdio.h>
-#include <stdlib.h>
+#include <string.h>
 
-static const char secret_flag[] = "CTF{easy_fstring_s_leak}";
+#define MAX_SPECS    3
+#define FLAG_ARG_POS 5
 
-static void setup(void) {
-    setvbuf(stdin, NULL, _IONBF, 0);
-    setvbuf(stdout, NULL, _IONBF, 0);
-    setvbuf(stderr, NULL, _IONBF, 0);
+static const char secret_flag[] = "AmmongUs{ILoveHiyuki}";
+
+static int count_specifiers(const char *s) {
+    int n = 0;
+    for (; *s != '\0'; ++s) {
+        if (*s == '%') {
+            if (*(s + 1) == '%') { ++s; continue; }
+            ++n;
+        }
+    }
+    return n;
 }
 
 int main(void) {
-    char fmt[128];
+    char fmt[32];
 
-    setup();
-
+    setvbuf(stdout, NULL, _IONBF, 0);
     puts("Now where we?");
 
+    fgets(fmt, sizeof fmt, stdin);
+    fmt[strcspn(fmt, "\n")] = '\0';
 
-    if (!fgets(fmt, sizeof(fmt), stdin)) {
+    if (count_specifiers(fmt) > MAX_SPECS) {
+        puts("No.");
         return 1;
     }
 
-    printf(fmt, secret_flag); 
+    /* Four dummy args push the flag to position FLAG_ARG_POS (5) */
+    printf(fmt, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, secret_flag);
+    putchar('\n');
+
     return 0;
 }
