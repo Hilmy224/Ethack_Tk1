@@ -24,7 +24,7 @@ void win(void) {
     system("/bin/sh");
 }
 
-int goldenfreddy = 66;
+int goldenfreddy = 67;
 
 int main(void) {
     char buf[64];
