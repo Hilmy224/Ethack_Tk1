@@ -16,7 +16,7 @@ challenge/
 ├── chall (diberikan)
 ├── flag 
 ```
-## setup lokal pakai Docker (disarankan)
+## setup lokal pakai Docker 
 
 ```bash
 cd challenge
