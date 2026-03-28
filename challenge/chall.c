@@ -3,10 +3,11 @@
  * Vulnerability : Format-string bug in a printf(buf) loop
  * Binary flags  : Partial RELRO (GOT writable), No PIE, No stack canary
  *
- * Easier path:
- * 1. Overwrite printf@GOT with win() (fixed address because no PIE).
- * 2. Send any line to trigger the hijacked call.
- * 3. win() executes /bin/sh.
+ * Exploitation path:
+ * 1. Leak libc address via format string (puts@GOT)
+ * 2. Calculate system() and /bin/sh address from libc base
+ * 3. Overwrite printf@GOT -> system
+ * 4. Send "/bin/sh" to trigger system("/bin/sh")
  */
 
 #include <stdio.h>
@@ -23,14 +24,15 @@ void win(void) {
     system("/bin/sh");
 }
 
+int goldenfreddy = 66;
+
 int main(void) {
     char buf[64];
-
     setup();
 
     puts("=== easy-fmt-got ===");
-    printf("hint: win() is at %p\n", (void *)win);
-    puts("Overwrite printf@GOT -> win, then send anything.");
+    puts("Can you get a shell?");
+    puts("Hint: there is something interesting in this binary...");
 
     do {
         fgets(buf, sizeof(buf), stdin);
