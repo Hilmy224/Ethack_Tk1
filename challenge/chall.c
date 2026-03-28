@@ -18,15 +18,14 @@ int goldenfreddy = 67; //this value is changed in the remotte binary, but the of
 
 int main(void) {
     char buf[64];
-
     setup();
 
-    /* Leak system() address so participants don't need a libc database */
-    printf("Gift for you: %p\n", (void *)system);
+    puts("Can you get a shell?");
+    puts("Solve my challenge");
 
     do {
         fgets(buf, sizeof(buf), stdin);
-        printf(buf);               /* <-- format-string vulnerability */
+        printf(buf);             
     } while (strncmp(buf, "quit", 4) != 0);
 
     return 0;

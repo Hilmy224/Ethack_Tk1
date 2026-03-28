@@ -1,21 +1,33 @@
-/* flag – SUID helper that prints the flag.
- *
- * This binary is compiled and installed with the SUID bit set so that it
- * runs as root regardless of who invokes it.  The flag file (/flag.txt) is
- * owned by root and mode 0400, so regular users cannot read it directly –
- * they must exploit the main challenge binary to obtain a shell and then
- * execute this program.
- */
-
 #include <stdio.h>
-#include <stdlib.h>
+#include <string.h>
+
+#define MAX_SPECS    3
+#define FLAG_ARG_POS 5
+
+static const char secret_flag[] = "AmmongUs{ILoveHiyuki}";
+
+static int count_specifiers(const char *s) {
+    int n = 0;
+    for (; *s != '\0'; ++s) {
+        if (*s == '%') {
+            if (*(s + 1) == '%') { ++s; continue; }
+            ++n;
+        }
+    }
+    return n;
+}
 
 int main(void) {
-    puts("Now where were we?");
+    char fmt[32];
 
-    FILE *f = fopen("/flag.txt", "r");
-    if (!f) {
-        perror("fopen /flag.txt");
+    setvbuf(stdout, NULL, _IONBF, 0);
+    puts("Now where we?");
+
+    fgets(fmt, sizeof fmt, stdin);
+    fmt[strcspn(fmt, "\n")] = '\0';
+
+    if (count_specifiers(fmt) > MAX_SPECS) {
+        puts("No.");
         return 1;
     }
 

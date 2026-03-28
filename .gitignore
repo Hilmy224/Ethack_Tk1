@@ -1,6 +1,4 @@
 # compiled binaries (built inside Docker, not committed)
-challenge/chall
-challenge/chall_patched
 challenge/flag
 
 # pwntools output
